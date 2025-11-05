@@ -1,0 +1,51 @@
+# Ignorer les fichiers générés par Visual Studio et MSBuild
+
+# Fichiers de build
+bin/
+obj/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Fichiers de compilation
+*.dll
+*.exe
+*.pdb
+*.cache
+*.obj
+
+# Fichiers de log
+*.log
+*.log.*
+
+# Fichiers temporaires
+*.tmp
+*.temp
+*~
+._*
+
+# Fichiers de système
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Fichiers de Visual Studio
+.vs/
+*.vspscc
+*.vssscc
+
+# Fichiers de test
+TestResults/
+*.trx
+*.coverage
+
+# Fichiers de récupération
+*.bak
+*.swp
+*#
+
+# Garder les fichiers importants
+!bin/Release/DaryPWD.exe
+!resources/DaryPWD.ico
+
