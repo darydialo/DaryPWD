@@ -857,98 +857,36 @@ namespace DaryPWD
         }
 
         private void aboutToolStripMenuItem_Click(object sender, EventArgs e)
+        private void aboutToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            // Créer une fenêtre "À propos" personnalisée avec l'icône
-            Label descLabel = new Label
+            Form aboutForm = new Form
             {
-                Text = "Application d'extraction de mots de passe\nInternet Explorer et Microsoft Edge\n\n⚠️ AVERTISSEMENT:\nUtilisation strictement limitée à vos propres systèmes.\nToute utilisation malveillante est interdite.",
-                Location = new Point(20, 100),
-                Size = new Size(350, 80)
+                Text = "À propos de DaryPWD",
+                Size = new Size(400, 320),
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false,
+                ShowInTaskbar = false
             };
 
-            Label authorLabel = new Label
-            {
-                Text = " By Dary",
-                Font = new Font("Microsoft Sans Serif", 9, FontStyle.Bold),
-                Location = new Point(20, 190),
-                Size = new Size(350, 20)
-            };
-
-            Label contactLabel = new Label
-            {
-                Text = "Contact : darydialo@gmail.com",
-                Location = new Point(20, 210),
-                Size = new Size(350, 20)
-            };
-
-            Label disclaimerLabel = new Label
-            {
-                Text = "⚠️ L'auteur n'est pas responsable de l'utilisation\nmalveillante ou illégale de cet outil.",
-                Font = new Font("Microsoft Sans Serif", 7, FontStyle.Italic),
-                ForeColor = Color.DarkRed,
-                Location = new Point(20, 235),
-                Size = new Size(350, 30)
-            };
-
-            Button okButton = new Button
-            {
-                Text = "OK",
-                DialogResult = DialogResult.OK,
-                Location = new Point(305, 270),
-                Size = new Size(75, 25)
-            };
-
-            aboutForm.Controls.Add(iconPictureBox);
-            aboutForm.Controls.Add(titleLabel);
-            aboutForm.Controls.Add(versionLabel);
-            aboutForm.Controls.Add(descLabel);
-            aboutForm.Controls.Add(authorLabel);
-            aboutForm.Controls.Add(contactLabel);
-            aboutForm.Controls.Add(disclaimerLabel);
-            aboutForm.Controls.Add(okButton);
-            aboutForm.AcceptButton = okButton;
-
-            aboutForm.Size = new Size(400, 310);
-
-            // Charger l'icône de l'application
             try
             {
                 string iconPath = Path.Combine(Application.StartupPath, "resources", "DaryPWD.ico");
-                if (!File.Exists(iconPath))
-                {
-                    iconPath = Path.Combine(Application.StartupPath, "DaryPWD.ico");
-                }
-                if (File.Exists(iconPath))
-                {
-                    Icon appIcon = new Icon(iconPath);
-                    aboutForm.Icon = appIcon;
-                }
+                if (!File.Exists(iconPath)) iconPath = Path.Combine(Application.StartupPath, "DaryPWD.ico");
+                if (File.Exists(iconPath)) aboutForm.Icon = new Icon(iconPath);
             }
             catch { }
 
-            // Créer un PictureBox pour l'icône smiley avec lunettes
-            PictureBox iconPictureBox = new PictureBox
-            {
-                Size = new Size(64, 64),
-                Location = new Point(20, 20),
-                SizeMode = PictureBoxSizeMode.Zoom
-            };
-            
+            PictureBox iconPictureBox = new PictureBox { Size = new Size(64, 64), Location = new Point(20, 20), SizeMode = PictureBoxSizeMode.Zoom };
             try
             {
                 string iconPath = Path.Combine(Application.StartupPath, "resources", "DaryPWD.ico");
-                if (!File.Exists(iconPath))
-                {
-                    iconPath = Path.Combine(Application.StartupPath, "DaryPWD.ico");
-                }
-                if (File.Exists(iconPath))
-                {
-                    iconPictureBox.Image = new Icon(iconPath, 64, 64).ToBitmap();
-                }
+                if (!File.Exists(iconPath)) iconPath = Path.Combine(Application.StartupPath, "DaryPWD.ico");
+                if (File.Exists(iconPath)) iconPictureBox.Image = new Icon(iconPath, 64, 64).ToBitmap();
             }
             catch
             {
-                // Si l'icône ne peut pas être chargée, créer une icône simple
                 Bitmap iconBmp = new Bitmap(64, 64);
                 using (Graphics g = Graphics.FromImage(iconBmp))
                 {
@@ -957,76 +895,27 @@ namespace DaryPWD
                     using (Pen pen = new Pen(Color.Black, 2))
                     using (SolidBrush brush = new SolidBrush(Color.Black))
                     {
-                        // Lunettes
                         g.DrawRectangle(pen, 10, 20, 15, 10);
                         g.DrawRectangle(pen, 39, 20, 15, 10);
                         g.DrawLine(pen, 25, 25, 39, 25);
-                        // Yeux
                         g.FillEllipse(brush, 15, 23, 5, 5);
                         g.FillEllipse(brush, 44, 23, 5, 5);
-                        // Sourire
                         g.DrawArc(pen, 15, 32, 34, 20, 0, 180);
                     }
                 }
                 iconPictureBox.Image = iconBmp;
             }
 
-            // Labels pour le texte
-            Label titleLabel = new Label
-            {
-                Text = "DaryPWD",
-                Font = new Font("Microsoft Sans Serif", 14, FontStyle.Bold),
-                Location = new Point(100, 20),
-                Size = new Size(270, 25),
-                AutoSize = false
-            };
+            Label titleLabel = new Label { Text = "DaryPWD", Font = new Font("Microsoft Sans Serif", 14, FontStyle.Bold), Location = new Point(100, 20), Size = new Size(270, 25), AutoSize = false };
+            Label versionLabel = new Label { Text = "Version 1.0", Location = new Point(100, 50), Size = new Size(270, 20) };
+            Label descLabel = new Label { Text = "Application d'extraction de mots de passe\\nInternet Explorer et Microsoft Edge\\n\\n⚠️ AVERTISSEMENT:\\nUtilisation strictement limitée à vos propres systèmes.\\nToute utilisation malveillante est interdite.", Location = new Point(20, 100), Size = new Size(350, 80) };
+            Label authorLabel = new Label { Text = " By Dary", Font = new Font("Microsoft Sans Serif", 9, FontStyle.Bold), Location = new Point(20, 190), Size = new Size(350, 20) };
+            Label contactLabel = new Label { Text = "Contact : darydialo@gmail.com", Location = new Point(20, 210), Size = new Size(350, 20) };
+            Label disclaimerLabel = new Label { Text = "⚠️ L'auteur n'est pas responsable de l'utilisation\\nmalveillante ou illégale de cet outil.", Font = new Font("Microsoft Sans Serif", 7, FontStyle.Italic), ForeColor = Color.DarkRed, Location = new Point(20, 235), Size = new Size(350, 30) };
+            Button okButton = new Button { Text = "OK", DialogResult = DialogResult.OK, Location = new Point(305, 270), Size = new Size(75, 25) };
 
-            Label versionLabel = new Label
-            {
-                Text = "Version 1.0",
-                Location = new Point(100, 50),
-                Size = new Size(270, 20)
-            };
-
-            Label descLabel = new Label
-            {
-                Text = "Application d'extraction de mots de passe\nInternet Explorer et Microsoft Edge",
-                Location = new Point(20, 100),
-                Size = new Size(350, 40)
-            };
-
-            Label authorLabel = new Label
-            {
-                Text = " By Dary",
-                Font = new Font("Microsoft Sans Serif", 9, FontStyle.Bold),
-                Location = new Point(20, 150),
-                Size = new Size(350, 20)
-            };
-
-            Label contactLabel = new Label
-            {
-                Text = "Contact : darydialo@gmail.com",
-                Location = new Point(20, 170),
-                Size = new Size(350, 20)
-            };
-
-            Button okButton = new Button
-            {
-                Text = "OK",
-                DialogResult = DialogResult.OK,
-                Location = new Point(305, 210),
-                Size = new Size(75, 25)
-            };
-
-            aboutForm.Controls.Add(iconPictureBox);
-            aboutForm.Controls.Add(titleLabel);
-            aboutForm.Controls.Add(versionLabel);
-            aboutForm.Controls.Add(descLabel);
-            aboutForm.Controls.Add(authorLabel);
-            aboutForm.Controls.Add(contactLabel);
-            aboutForm.Controls.Add(okButton);
+            aboutForm.Controls.AddRange(new Control[] { iconPictureBox, titleLabel, versionLabel, descLabel, authorLabel, contactLabel, disclaimerLabel, okButton });
             aboutForm.AcceptButton = okButton;
-
             aboutForm.ShowDialog(this);
         }
 
@@ -1036,4 +925,3 @@ namespace DaryPWD
         }
     }
 }
-
