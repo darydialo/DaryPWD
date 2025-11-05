@@ -859,16 +859,56 @@ namespace DaryPWD
         private void aboutToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // Créer une fenêtre "À propos" personnalisée avec l'icône
-            Form aboutForm = new Form
+            Label descLabel = new Label
             {
-                Text = "À propos de DaryPWD",
-                Size = new Size(400, 280),
-                StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MaximizeBox = false,
-                MinimizeBox = false,
-                ShowInTaskbar = false
+                Text = "Application d'extraction de mots de passe\nInternet Explorer et Microsoft Edge\n\n⚠️ AVERTISSEMENT:\nUtilisation strictement limitée à vos propres systèmes.\nToute utilisation malveillante est interdite.",
+                Location = new Point(20, 100),
+                Size = new Size(350, 80)
             };
+
+            Label authorLabel = new Label
+            {
+                Text = " By Dary",
+                Font = new Font("Microsoft Sans Serif", 9, FontStyle.Bold),
+                Location = new Point(20, 190),
+                Size = new Size(350, 20)
+            };
+
+            Label contactLabel = new Label
+            {
+                Text = "Contact : darydialo@gmail.com",
+                Location = new Point(20, 210),
+                Size = new Size(350, 20)
+            };
+
+            Label disclaimerLabel = new Label
+            {
+                Text = "⚠️ L'auteur n'est pas responsable de l'utilisation\nmalveillante ou illégale de cet outil.",
+                Font = new Font("Microsoft Sans Serif", 7, FontStyle.Italic),
+                ForeColor = Color.DarkRed,
+                Location = new Point(20, 235),
+                Size = new Size(350, 30)
+            };
+
+            Button okButton = new Button
+            {
+                Text = "OK",
+                DialogResult = DialogResult.OK,
+                Location = new Point(305, 270),
+                Size = new Size(75, 25)
+            };
+
+            aboutForm.Controls.Add(iconPictureBox);
+            aboutForm.Controls.Add(titleLabel);
+            aboutForm.Controls.Add(versionLabel);
+            aboutForm.Controls.Add(descLabel);
+            aboutForm.Controls.Add(authorLabel);
+            aboutForm.Controls.Add(contactLabel);
+            aboutForm.Controls.Add(disclaimerLabel);
+            aboutForm.Controls.Add(okButton);
+            aboutForm.AcceptButton = okButton;
+
+            aboutForm.Size = new Size(400, 310);
 
             // Charger l'icône de l'application
             try

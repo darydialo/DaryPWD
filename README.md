@@ -168,9 +168,37 @@ DaryPWD/
 - Assurez-vous que .NET Framework 4.7.2 SDK est installé
 - Utilisez MSBuild depuis la ligne de commande avec les chemins complets
 
+## ⚠️ Avertissement et clause de non-responsabilité
+
+**INTERDICTION D'UTILISATION MALVEILLANTE**
+
+Cette application est strictement destinée à la récupération de **vos propres mots de passe** sur **votre propre système**. Toute utilisation à des fins malveillantes, frauduleuses ou illégales est strictement interdite.
+
+**CLAUSE DE NON-RESPONSABILITÉ**
+
+L'auteur de cette application n'est **PAS RESPONSABLE** de :
+- L'utilisation abusive ou illégale de cet outil
+- Les dommages causés par l'utilisation non autorisée de cet outil
+- Toute violation de la vie privée résultant de l'utilisation de cet outil
+- Toute perte de données ou autres conséquences découlant de l'utilisation de cet outil
+
+**Utilisez cet outil uniquement sur des systèmes dont vous êtes propriétaire ou pour lesquels vous avez une autorisation écrite explicite.**
+
+En utilisant cette application, vous acceptez que :
+- Vous êtes seul responsable de votre utilisation de cet outil
+- Vous utiliserez cet outil de manière légale et éthique
+- Vous ne l'utiliserez pas pour accéder à des systèmes sans autorisation
+- Vous respecterez toutes les lois locales et internationales applicables
+
+L'auteur décline toute responsabilité pour toute utilisation abusive, illégale ou malveillante de cette application.
+
+---
+
 ## 📝 Licence
 
 Cette application est fournie sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
+
+**IMPORTANT** : La licence MIT ne vous autorise pas à utiliser cet outil à des fins illégales ou malveillantes.
 
 ## 👨‍💻 Développeur
 
@@ -188,4 +216,6 @@ Merci d'utiliser DaryPWD ! Si cette application vous est utile, n'hésitez pas �
 
 ---
 
-⚠️ **Avertissement légal** : Cette application est destinée à la récupération de vos propres mots de passe. Utilisez-la de manière responsable et conforme aux lois locales. L'auteur n'est pas responsable de l'utilisation abusive de cet outil.
+⚠️ **Avertissement légal** : Voir le fichier `DISCLAIMER.md` pour les avertissements complets et la clause de non-responsabilité.
+
+**RAPPEL IMPORTANT** : Cette application est strictement destinée à la récupération de vos propres mots de passe. Toute utilisation malveillante ou illégale est strictement interdite. L'auteur n'est pas responsable de l'utilisation abusive de cet outil.
