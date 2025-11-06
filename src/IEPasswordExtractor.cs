@@ -598,6 +598,40 @@ namespace DaryPWD
             return "";
         }
 
+        private static string DecryptChromiumPassword(byte[] encryptedData)
+        {
+            try
+            {
+                if (encryptedData == null || encryptedData.Length == 0)
+                    return string.Empty;
+
+                // Les navigateurs Chromium stockent les mots de passe avec un préfixe de version
+                // Format: "v10" ou "v11" suivi des données chiffrées avec DPAPI
+                if (encryptedData.Length < 3)
+                    return string.Empty;
+
+                // Vérifier le préfixe de version (v10 ou v11)
+                string versionPrefix = Encoding.ASCII.GetString(encryptedData, 0, 3);
+                if (versionPrefix != "v10" && versionPrefix != "v11")
+                {
+                    // Si pas de préfixe, essayer de déchiffrer directement avec DPAPI
+                    return DecryptDPAPI(encryptedData);
+                }
+
+                // Extraire les données chiffrées (tout sauf le préfixe de 3 bytes)
+                byte[] encryptedPassword = new byte[encryptedData.Length - 3];
+                Array.Copy(encryptedData, 3, encryptedPassword, 0, encryptedPassword.Length);
+
+                // Déchiffrer avec DPAPI
+                return DecryptDPAPI(encryptedPassword);
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Erreur décryptage Chromium: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
         private static void ParseIEFormData(string url, string data, List<PasswordEntry> entries)
         {
             try
@@ -1047,49 +1081,78 @@ namespace DaryPWD
                     using (SQLiteConnection connection = new SQLiteConnection(connectionString))
                     {
                         connection.Open();
+                        LogMessage($"Connexion à la base {browserName} réussie");
+                        
                         string sql = "SELECT origin_url, username_value, password_value FROM logins";
                         using (SQLiteCommand command = new SQLiteCommand(sql, connection))
                         using (SQLiteDataReader reader = command.ExecuteReader())
                         {
+                            int entryCount = 0;
+                            int successCount = 0;
+                            
                             while (reader.Read())
                             {
+                                entryCount++;
                                 try
                                 {
-                                    string url = reader.GetString(0);
-                                    string username = reader.GetString(1);
-                                    byte[] encryptedPasswordBytes = (byte[])reader[2];
+                                    string url = reader.IsDBNull(0) ? string.Empty : reader.GetString(0);
+                                    string username = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+                                    byte[] encryptedPasswordBytes = reader.IsDBNull(2) ? null : (byte[])reader[2];
 
-                                    if (string.IsNullOrEmpty(url) || encryptedPasswordBytes.Length == 0)
+                                    if (string.IsNullOrEmpty(url))
                                     {
+                                        LogMessage($"Entrée {entryCount} ignorée: URL vide");
+                                        continue;
+                                    }
+                                    
+                                    if (encryptedPasswordBytes == null || encryptedPasswordBytes.Length == 0)
+                                    {
+                                        LogMessage($"Entrée {entryCount} ignorée: pas de mot de passe pour {url}");
                                         continue;
                                     }
 
-                                    string decryptedPassword = DecryptDPAPI(encryptedPasswordBytes);
+                                    LogMessage($"Traitement entrée {entryCount}: {url} | User: {username} | Password bytes: {encryptedPasswordBytes.Length}");
+                                    
+                                    string decryptedPassword = DecryptChromiumPassword(encryptedPasswordBytes);
 
-                                    if (!string.IsNullOrEmpty(decryptedPassword) && IsValidPassword(decryptedPassword))
+                                    if (string.IsNullOrEmpty(decryptedPassword))
                                     {
-                                        entries.Add(new PasswordEntry
-                                        {
-                                            EntryName = url,
-                                            Type = browserName,
-                                            StoredIn = $"{browserName} Database",
-                                            UserName = username,
-                                            Password = decryptedPassword
-                                        });
-                                        LogMessage($"✓ Ajouté {browserName}: {url} | User: {username}");
+                                        LogMessage($"Échec déchiffrement pour {url}");
+                                        continue;
                                     }
+                                    
+                                    if (!IsValidPassword(decryptedPassword))
+                                    {
+                                        LogMessage($"Mot de passe invalide pour {url}");
+                                        continue;
+                                    }
+
+                                    entries.Add(new PasswordEntry
+                                    {
+                                        EntryName = url,
+                                        Type = browserName,
+                                        StoredIn = $"{browserName} Database",
+                                        UserName = username,
+                                        Password = decryptedPassword
+                                    });
+                                    successCount++;
+                                    LogMessage($"✓ Ajouté {browserName}: {url} | User: {username}");
                                 }
                                 catch (Exception ex)
                                 {
-                                    LogMessage($"Erreur lecture entrée {browserName}: {ex.Message}");
+                                    LogMessage($"Erreur lecture entrée {entryCount} {browserName}: {ex.Message}");
+                                    LogMessage($"Stack Trace: {ex.StackTrace}");
                                 }
                             }
+                            
+                            LogMessage($"Extraction {browserName} terminée: {successCount} entrées réussies sur {entryCount} totales");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    LogMessage($"Erreur copie/lecture base {browserName}: {ex.Message}");
+                    LogMessage($"ERREUR copie/lecture base {browserName}: {ex.Message}");
+                    LogMessage($"Stack Trace: {ex.StackTrace}");
                 }
                 finally
                 {
