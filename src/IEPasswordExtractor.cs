@@ -178,7 +178,12 @@ namespace DaryPWD
 
             try
             {
-                LogMessage("Début de l'extraction des mots de passe");
+                LogMessage("=== DÉBUT DE L'EXTRACTION DES MOTS DE PASSE ===");
+                LogMessage($"Version OS: {Environment.OSVersion}");
+                LogMessage($"Utilisateur: {Environment.UserName}");
+                
+                // Diagnostic préalable : vérifier l'existence des clés de registre IE
+                DiagnoseIERegistry();
                 
                 // 1. Extraire depuis Windows Credential Manager (HTTP Authentication, FTP, Password-Protected Sites)
                 LogMessage("Début extraction Credential Manager");
@@ -503,26 +508,110 @@ namespace DaryPWD
             }
         }
 
+        private static void DiagnoseIERegistry()
+        {
+            try
+            {
+                LogMessage("=== DIAGNOSTIC DU REGISTRE IE ===");
+                string[] pathsToCheck = new string[]
+                {
+                    @"Software\Microsoft\Internet Explorer\IntelliForms",
+                    @"Software\Microsoft\Internet Explorer\IntelliForms\Storage1",
+                    @"Software\Microsoft\Internet Explorer\IntelliForms\Storage2",
+                    @"Software\Microsoft\Internet Explorer\IntelliForms\SPW",
+                    @"Software\Microsoft\Internet Explorer\Main"
+                };
+
+                foreach (string path in pathsToCheck)
+                {
+                    try
+                    {
+                        using (RegistryKey key = Registry.CurrentUser.OpenSubKey(path))
+                        {
+                            if (key != null)
+                            {
+                                LogMessage($"✓ Clé trouvée: {path}");
+                                string[] subKeys = key.GetSubKeyNames();
+                                string[] values = key.GetValueNames();
+                                LogMessage($"  - Sous-clés: {subKeys.Length}, Valeurs: {values.Length}");
+                                
+                                if (subKeys.Length > 0)
+                                {
+                                    LogMessage($"  - Premières sous-clés: {string.Join(", ", subKeys.Take(5))}");
+                                }
+                            }
+                            else
+                            {
+                                LogMessage($"✗ Clé non trouvée: {path}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMessage($"✗ Erreur accès {path}: {ex.Message}");
+                    }
+                }
+                LogMessage("=== FIN DIAGNOSTIC ===");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"ERREUR Diagnostic: {ex.Message}");
+            }
+        }
+
         private static void ExtractIEDataFromRegistryPath(RegistryKey rootKey, string iePath, List<PasswordEntry> entries)
         {
             try
             {
                 LogMessage($"Extraction IE depuis: {iePath}");
                 
-                using (RegistryKey key = rootKey.OpenSubKey(iePath))
+                using (RegistryKey key = rootKey.OpenSubKey(iePath, RegistryKeyPermissionCheck.ReadSubTree))
                 {
                     if (key != null)
                     {
-                        LogMessage($"Clé IE trouvée, lecture des sous-clés...");
+                        LogMessage($"✓ Clé IE trouvée, lecture des sous-clés...");
                         string[] subKeyNames = key.GetSubKeyNames();
                         LogMessage($"Nombre de sous-clés trouvées: {subKeyNames.Length}");
+                        
+                        if (subKeyNames.Length == 0)
+                        {
+                            LogMessage($"ATTENTION: Aucune sous-clé trouvée dans {iePath}");
+                            // Essayer de lire directement les valeurs de cette clé
+                            string[] valueNames = key.GetValueNames();
+                            LogMessage($"Nombre de valeurs directes: {valueNames.Length}");
+                            foreach (string valueName in valueNames)
+                            {
+                                try
+                                {
+                                    object value = key.GetValue(valueName);
+                                    byte[] data = value as byte[];
+                                    if (data != null && data.Length > 0)
+                                    {
+                                        LogMessage($"Traitement valeur directe: {valueName} (taille: {data.Length} bytes)");
+                                        string decrypted = DecryptDPAPI(data);
+                                        if (!string.IsNullOrEmpty(decrypted))
+                                        {
+                                            ParseIEFormData(valueName, decrypted, entries);
+                                        }
+                                        else
+                                        {
+                                            TryAlternativeIEParsing(valueName, data, entries);
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    LogMessage($"Erreur valeur directe {valueName}: {ex.Message}");
+                                }
+                            }
+                        }
                         
                         foreach (string subKeyName in subKeyNames)
                         {
                             try
                             {
                                 LogMessage($"Traitement sous-clé: {subKeyName}");
-                                using (RegistryKey subKey = key.OpenSubKey(subKeyName))
+                                using (RegistryKey subKey = key.OpenSubKey(subKeyName, RegistryKeyPermissionCheck.ReadSubTree))
                                 {
                                     if (subKey != null)
                                     {
@@ -531,49 +620,73 @@ namespace DaryPWD
                                         string[] valueNames = subKey.GetValueNames();
                                         LogMessage($"Nombre de valeurs dans cette sous-clé: {valueNames.Length}");
 
+                                        if (valueNames.Length == 0)
+                                        {
+                                            LogMessage($"ATTENTION: Aucune valeur dans la sous-clé {subKeyName}");
+                                        }
+
                                         foreach (string valueName in valueNames)
                                         {
                                             try
                                             {
-                                                object value = subKey.GetValue(valueName);
+                                                object value = subKey.GetValue(valueName, null, RegistryValueOptions.None);
                                                 if (value != null)
                                                 {
                                                     byte[] data = value as byte[];
                                                     if (data != null && data.Length > 0)
                                                     {
                                                         LogMessage($"Décryptage des données pour {valueName} (taille: {data.Length} bytes)...");
+                                                        
+                                                        // Afficher les premiers bytes pour diagnostic
+                                                        string hexPreview = BitConverter.ToString(data.Take(16).ToArray()).Replace("-", " ");
+                                                        LogMessage($"  Premiers bytes (hex): {hexPreview}");
+                                                        
                                                         string decrypted = DecryptDPAPI(data);
                                                         if (!string.IsNullOrEmpty(decrypted))
                                                         {
-                                                            LogMessage($"Données décryptées avec succès (taille: {decrypted.Length} caractères), parsing...");
+                                                            LogMessage($"✓ Données décryptées avec succès (taille: {decrypted.Length} caractères), parsing...");
                                                             ParseIEFormData(url, decrypted, entries);
                                                         }
                                                         else
                                                         {
-                                                            LogMessage($"Échec du décryptage pour {valueName}");
+                                                            LogMessage($"✗ Échec du décryptage DPAPI pour {valueName}, essai méthode alternative...");
                                                             // Essayer une méthode alternative de parsing pour Windows 7
                                                             TryAlternativeIEParsing(url, data, entries);
                                                         }
                                                     }
+                                                    else
+                                                    {
+                                                        LogMessage($"Valeur {valueName} n'est pas un tableau de bytes ou est vide");
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    LogMessage($"Valeur {valueName} est null");
                                                 }
                                             }
                                             catch (Exception ex)
                                             {
-                                                LogMessage($"Erreur valeur {valueName}: {ex.Message}");
+                                                LogMessage($"ERREUR valeur {valueName}: {ex.Message}");
+                                                LogMessage($"Stack Trace: {ex.StackTrace}");
                                             }
                                         }
+                                    }
+                                    else
+                                    {
+                                        LogMessage($"Impossible d'ouvrir la sous-clé: {subKeyName}");
                                     }
                                 }
                             }
                             catch (Exception ex)
                             {
-                                LogMessage($"Erreur sous-clé {subKeyName}: {ex.Message}");
+                                LogMessage($"ERREUR sous-clé {subKeyName}: {ex.Message}");
+                                LogMessage($"Stack Trace: {ex.StackTrace}");
                             }
                         }
                     }
                     else
                     {
-                        LogMessage($"Clé IE non trouvée: {iePath}");
+                        LogMessage($"✗ Clé IE non trouvée: {iePath}");
                     }
                 }
             }
@@ -629,27 +742,54 @@ namespace DaryPWD
         {
             try
             {
-                LogMessage($"Tentative de parsing alternatif pour {url}");
+                LogMessage($"Tentative de parsing alternatif pour {url} (taille: {data.Length} bytes)");
                 
                 // Essayer de décoder directement en Unicode
                 string unicodeString = Encoding.Unicode.GetString(data).TrimEnd('\0');
-                if (!string.IsNullOrEmpty(unicodeString))
+                if (!string.IsNullOrEmpty(unicodeString) && unicodeString.Length > 0)
                 {
-                    LogMessage($"Données Unicode trouvées, parsing...");
+                    LogMessage($"Données Unicode trouvées ({unicodeString.Length} caractères), parsing...");
                     ParseIEFormData(url, unicodeString, entries);
                 }
                 
                 // Essayer aussi en ASCII
                 string asciiString = Encoding.ASCII.GetString(data).TrimEnd('\0');
-                if (!string.IsNullOrEmpty(asciiString) && asciiString != unicodeString)
+                if (!string.IsNullOrEmpty(asciiString) && asciiString != unicodeString && asciiString.Length > 0)
                 {
-                    LogMessage($"Données ASCII trouvées, parsing...");
+                    LogMessage($"Données ASCII trouvées ({asciiString.Length} caractères), parsing...");
                     ParseIEFormData(url, asciiString, entries);
+                }
+                
+                // Essayer UTF8
+                try
+                {
+                    string utf8String = Encoding.UTF8.GetString(data).TrimEnd('\0');
+                    if (!string.IsNullOrEmpty(utf8String) && utf8String != unicodeString && utf8String != asciiString && utf8String.Length > 0)
+                    {
+                        LogMessage($"Données UTF8 trouvées ({utf8String.Length} caractères), parsing...");
+                        ParseIEFormData(url, utf8String, entries);
+                    }
+                }
+                catch { }
+                
+                // Si les données semblent être en clair (contiennent beaucoup de caractères imprimables)
+                int printableCount = 0;
+                foreach (byte b in data)
+                {
+                    if (b >= 32 && b <= 126) // Caractères ASCII imprimables
+                        printableCount++;
+                }
+                if (printableCount > data.Length * 0.8) // Plus de 80% de caractères imprimables
+                {
+                    string plainText = Encoding.ASCII.GetString(data);
+                    LogMessage($"Données semblent être en clair ({printableCount}/{data.Length} caractères imprimables), parsing...");
+                    ParseIEFormData(url, plainText, entries);
                 }
             }
             catch (Exception ex)
             {
-                LogMessage($"Erreur parsing alternatif pour {url}: {ex.Message}");
+                LogMessage($"ERREUR parsing alternatif pour {url}: {ex.Message}");
+                LogMessage($"Stack Trace: {ex.StackTrace}");
             }
         }
 
@@ -660,6 +800,12 @@ namespace DaryPWD
             
             try
             {
+                if (encryptedData == null || encryptedData.Length == 0)
+                {
+                    LogMessage("DecryptDPAPI: Données vides ou null");
+                    return "";
+                }
+
                 DATA_BLOB dataIn = new DATA_BLOB();
                 DATA_BLOB dataOut = new DATA_BLOB();
                 DATA_BLOB entropy = new DATA_BLOB();
@@ -675,7 +821,14 @@ namespace DaryPWD
                 prompt.hwndApp = IntPtr.Zero;
                 prompt.szPrompt = null;
 
-                if (CryptUnprotectData(ref dataIn, null, ref entropy, IntPtr.Zero, ref prompt, 0, ref dataOut))
+                // Essayer avec différents flags pour Windows 7
+                int[] flagsToTry = new int[] { 0, 0x1 }; // 0 = normal, 0x1 = CRYPTPROTECT_UI_FORBIDDEN
+                
+                foreach (int flags in flagsToTry)
+                {
+                    try
+                    {
+                        if (CryptUnprotectData(ref dataIn, null, ref entropy, IntPtr.Zero, ref prompt, flags, ref dataOut))
                 {
                     dataOutPtr = dataOut.pbData;
                     byte[] decryptedBytes = new byte[dataOut.cbData];
@@ -685,14 +838,29 @@ namespace DaryPWD
                     if (dataOut.pbData != IntPtr.Zero)
                     {
                         Marshal.FreeHGlobal(dataOut.pbData);
-                    }
-                    
-                    return Encoding.Unicode.GetString(decryptedBytes).TrimEnd('\0');
+                                dataOutPtr = IntPtr.Zero;
+                            }
+                            
+                            string result = Encoding.Unicode.GetString(decryptedBytes).TrimEnd('\0');
+                            LogMessage($"DecryptDPAPI: Décryptage réussi (taille résultat: {result.Length} caractères)");
+                            return result;
+                        }
+                        else
+                        {
+                            int error = Marshal.GetLastWin32Error();
+                            LogMessage($"DecryptDPAPI: Échec avec flags {flags}, erreur Windows: {error}");
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Erreur décryptage DPAPI: {ex.Message}");
+                        LogMessage($"DecryptDPAPI: Exception avec flags {flags}: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"ERREUR DecryptDPAPI: {ex.Message}");
+                LogMessage($"Stack Trace: {ex.StackTrace}");
             }
             finally
             {
@@ -747,26 +915,66 @@ namespace DaryPWD
                     return;
 
                 LogMessage($"Parsing des données IE pour URL: {url} (taille: {data.Length} caractères)");
+                LogMessage($"Données brutes (premiers 100 caractères): {data.Substring(0, Math.Min(100, data.Length))}");
+                
+                // Nettoyer les données en supprimant les caractères de contrôle sauf ceux utiles
+                StringBuilder cleanedData = new StringBuilder();
+                foreach (char c in data)
+                {
+                    if (!char.IsControl(c) || c == '\r' || c == '\n' || c == '\t' || c == '\0')
+                    {
+                        cleanedData.Append(c);
+                    }
+                }
+                string cleanData = cleanedData.ToString();
                 
                 // Format typique d'IE: les données sont séparées par des caractères null
-                string[] parts = data.Split(new char[] { '\0' }, StringSplitOptions.RemoveEmptyEntries);
+                // Mais parfois c'est juste username\0password\0 ou d'autres formats
+                string[] parts = cleanData.Split(new char[] { '\0' }, StringSplitOptions.RemoveEmptyEntries);
                 
-                LogMessage($"Nombre de parties après split: {parts.Length}");
+                LogMessage($"Nombre de parties après split null: {parts.Length}");
                 
                 // Si pas de séparateurs null, essayer d'autres méthodes
-                if (parts.Length == 0 || (parts.Length == 1 && parts[0].Length == data.Length))
+                if (parts.Length == 0 || (parts.Length == 1 && parts[0].Length == cleanData.Length))
                 {
-                    // Essayer de parser avec d'autres séparateurs (Windows 7 peut utiliser différents formats)
-                    parts = data.Split(new char[] { '\r', '\n', '\t', (char)0x01, (char)0x02 }, StringSplitOptions.RemoveEmptyEntries);
+                    // Essayer de parser avec d'autres séparateurs
+                    parts = cleanData.Split(new char[] { '\r', '\n', '\t', (char)0x01, (char)0x02, (char)0x1E }, StringSplitOptions.RemoveEmptyEntries);
                     LogMessage($"Nombre de parties après split alternatif: {parts.Length}");
+                }
+                
+                // Si toujours rien, essayer de chercher des patterns dans les données
+                if (parts.Length == 0)
+                {
+                    // Chercher des patterns comme email@domain.com ou des URLs
+                    System.Text.RegularExpressions.Regex emailRegex = new System.Text.RegularExpressions.Regex(@"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b");
+                    System.Text.RegularExpressions.Regex urlRegex = new System.Text.RegularExpressions.Regex(@"https?://[^\s]+|www\.[^\s]+");
+                    
+                    var emailMatches = emailRegex.Matches(cleanData);
+                    var urlMatches = urlRegex.Matches(cleanData);
+                    
+                    if (emailMatches.Count > 0 || urlMatches.Count > 0)
+                    {
+                        // Extraire les parties intéressantes
+                        List<string> extractedParts = new List<string>();
+                        foreach (System.Text.RegularExpressions.Match match in emailMatches)
+                        {
+                            extractedParts.Add(match.Value);
+                        }
+                        foreach (System.Text.RegularExpressions.Match match in urlMatches)
+                        {
+                            extractedParts.Add(match.Value);
+                        }
+                        parts = extractedParts.ToArray();
+                        LogMessage($"Patterns trouvés: {parts.Length} parties");
+                    }
                 }
                 
                 if (parts.Length == 0)
                 {
-                    // Dernière tentative : traiter toute la chaîne comme un seul mot de passe
-                    string singlePassword = data.Trim();
+                    // Dernière tentative : traiter toute la chaîne comme un seul mot de passe si elle semble valide
+                    string singlePassword = cleanData.Trim();
                     singlePassword = CleanPassword(singlePassword);
-                    if (!string.IsNullOrEmpty(singlePassword) && IsValidPassword(singlePassword))
+                    if (!string.IsNullOrEmpty(singlePassword) && IsValidPassword(singlePassword) && singlePassword.Length >= 3)
                     {
                         entries.Add(new PasswordEntry
                         {
@@ -783,99 +991,140 @@ namespace DaryPWD
 
                 string username = "";
                 string password = "";
+                List<string> validParts = new List<string>();
 
-                // Chercher username et password dans les parties
+                // Filtrer et nettoyer les parties
                 for (int i = 0; i < parts.Length; i++)
                 {
                     string part = parts[i].Trim();
                     if (string.IsNullOrEmpty(part))
                         continue;
 
-                    // Filtrer les parties qui semblent être des métadonnées ou du binaire
-                    if (part.Length > 200) // Trop long pour être un username/password normal
+                    // Filtrer les parties trop longues ou trop courtes
+                    if (part.Length < 1 || part.Length > 200)
                         continue;
                     
                     // Vérifier si c'est principalement du texte imprimable
                     int printableChars = 0;
+                    int letterOrDigitChars = 0;
                     foreach (char c in part)
                     {
-                        if (char.IsLetterOrDigit(c) || char.IsPunctuation(c) || char.IsSymbol(c) || c == ' ')
+                        if (char.IsLetterOrDigit(c) || char.IsPunctuation(c) || char.IsSymbol(c) || c == ' ' || c == '@' || c == '.' || c == '-' || c == '_')
                             printableChars++;
+                        if (char.IsLetterOrDigit(c))
+                            letterOrDigitChars++;
                     }
-                    if (printableChars < part.Length * 0.7) // Moins de 70% de caractères imprimables
-                        continue;
-
-                    LogMessage($"Partie {i}: {part.Substring(0, Math.Min(30, part.Length))}...");
-
-                    // Essayer d'identifier le username (souvent le premier champ non vide qui ressemble à un email/login)
-                    if (string.IsNullOrEmpty(username))
+                    
+                    // Accepter si au moins 60% de caractères imprimables et au moins 30% de lettres/chiffres
+                    if (printableChars >= part.Length * 0.6 && letterOrDigitChars >= part.Length * 0.3)
                     {
-                        // Vérifier si ça ressemble à un username (contient des lettres/chiffres)
-                        if (part.Length > 0 && part.Length <= 100)
-                        {
-                            username = part;
-                            LogMessage($"Username identifié: {username}");
+                        validParts.Add(part);
+                        LogMessage($"Partie valide {validParts.Count}: {part.Substring(0, Math.Min(50, part.Length))}...");
+                    }
+                }
+
+                // Identifier username et password
+                if (validParts.Count > 0)
+                {
+                    // Le premier élément valide est souvent le username (surtout si c'est un email)
+                    username = validParts[0];
+                    
+                    // Chercher un email comme username
+                    foreach (string part in validParts)
+                    {
+                        if (part.Contains("@") && part.Contains(".") && part.Length > 5 && part.Length < 100)
+                    {
+                        username = part;
+                            LogMessage($"Username (email) identifié: {username}");
+                            break;
                         }
                     }
-                    // Le password est généralement le deuxième champ significatif
-                    else if (string.IsNullOrEmpty(password))
+                    
+                    // Le password est généralement le deuxième élément ou le dernier
+                    if (validParts.Count > 1)
+                    {
+                        // Chercher le password (généralement plus long et sans @)
+                        for (int i = 1; i < validParts.Count; i++)
+                        {
+                            string part = validParts[i];
+                            // Si ce n'est pas un email et que c'est différent du username
+                            if (!part.Contains("@") && part != username && part.Length >= 3)
                     {
                         password = part;
-                        LogMessage($"Password identifié (longueur: {password.Length})");
-                        break; // On a trouvé username et password
-                    }
-                }
-
-                // Si on n'a qu'une seule valeur, c'est probablement le password
-                if (parts.Length == 1 && string.IsNullOrEmpty(password))
-                {
-                    password = parts[0];
-                    LogMessage($"Password unique identifié");
-                }
-                
-                // Si on a plusieurs parties mais pas de password identifié, essayer la dernière partie
-                if (parts.Length > 1 && string.IsNullOrEmpty(password))
-                {
-                    for (int i = parts.Length - 1; i >= 0; i--)
-                    {
-                        string part = parts[i].Trim();
-                        if (!string.IsNullOrEmpty(part) && part.Length > 0 && part.Length <= 200)
+                                LogMessage($"Password identifié: {new string('*', Math.Min(password.Length, 20))}");
+                                break;
+                            }
+                        }
+                        
+                        // Si pas trouvé, prendre le dernier élément
+                        if (string.IsNullOrEmpty(password) && validParts.Count > 1)
                         {
-                            password = part;
-                            LogMessage($"Password identifié depuis la dernière partie valide");
-                            break;
+                            password = validParts[validParts.Count - 1];
+                            LogMessage($"Password (dernier élément) identifié");
+                        }
+                    }
+                    else if (validParts.Count == 1)
+                    {
+                        // Une seule partie : c'est probablement le password
+                        if (!validParts[0].Contains("@"))
+                        {
+                            password = validParts[0];
+                            username = "";
+                    LogMessage($"Password unique identifié");
                         }
                     }
                 }
 
                 // Nettoyer le mot de passe avant de l'ajouter
                 password = CleanPassword(password);
+                username = username.Trim();
+                
+                // Extraire l'URL réelle si possible depuis les données
+                string realUrl = url;
+                if (validParts.Count > 0)
+                {
+                    foreach (string part in validParts)
+                    {
+                        if ((part.StartsWith("http://") || part.StartsWith("https://") || part.Contains("www.")) && part.Contains("."))
+                        {
+                            realUrl = part;
+                            LogMessage($"URL réelle trouvée dans les données: {realUrl}");
+                            break;
+                        }
+                    }
+                }
+                
+                // Si l'URL est toujours en hexadécimal, essayer de la décoder
+                if (System.Text.RegularExpressions.Regex.IsMatch(realUrl, @"^[0-9A-Fa-f]+$"))
+                {
+                    realUrl = DecodeUrl(realUrl);
+                }
                 
                 // Ajouter seulement si on a au moins un password valide
-                if (!string.IsNullOrEmpty(password) && IsValidPassword(password))
+                if (!string.IsNullOrEmpty(password) && IsValidPassword(password) && password.Length >= 3)
                 {
                     // Vérifier si cette entrée existe déjà (éviter les doublons)
-                    bool exists = entries.Any(e => e.EntryName == url && e.UserName == username && e.Password == password);
+                    bool exists = entries.Any(e => e.EntryName == realUrl && e.UserName == username && e.Password == password);
                     if (!exists)
+                {
+                    entries.Add(new PasswordEntry
                     {
-                        entries.Add(new PasswordEntry
-                        {
-                            EntryName = url,
+                            EntryName = realUrl,
                             Type = "Internet Explorer",
                             StoredIn = "Registry (AutoComplete)",
-                            UserName = username,
-                            Password = password
-                        });
-                        LogMessage($"✓ Entrée ajoutée pour {url}: User={username}, Password={new string('*', Math.Min(password.Length, 20))}");
-                    }
-                    else
-                    {
-                        LogMessage($"Entrée déjà présente pour {url}, ignorée");
+                        UserName = username,
+                        Password = password
+                    });
+                        LogMessage($"✓ Entrée ajoutée pour {realUrl}: User={username}, Password={new string('*', Math.Min(password.Length, 20))}");
+                }
+                else
+                {
+                        LogMessage($"Entrée déjà présente pour {realUrl}, ignorée");
                     }
                 }
                 else
                 {
-                    LogMessage($"Aucun password valide trouvé pour {url} (password vide ou invalide)");
+                    LogMessage($"Aucun password valide trouvé pour {url} (password vide ou invalide: '{password}')");
                 }
             }
             catch (Exception ex)
@@ -1075,8 +1324,55 @@ namespace DaryPWD
         {
             try
             {
-                // Décoder l'URL encodée depuis le registre
-                // Internet Explorer encode les URLs de manière spéciale
+                if (string.IsNullOrEmpty(encodedUrl))
+                    return encodedUrl;
+
+                LogMessage($"Décodage URL: {encodedUrl}");
+                
+                // Si c'est une chaîne hexadécimale (que des caractères 0-9, A-F), essayer de la décoder
+                if (System.Text.RegularExpressions.Regex.IsMatch(encodedUrl, @"^[0-9A-Fa-f]+$"))
+                {
+                    try
+                    {
+                        // Convertir hexadécimal en bytes puis en string Unicode
+                        byte[] hexBytes = new byte[encodedUrl.Length / 2];
+                        for (int i = 0; i < hexBytes.Length; i++)
+                        {
+                            hexBytes[i] = Convert.ToByte(encodedUrl.Substring(i * 2, 2), 16);
+                        }
+                        
+                        // Essayer Unicode
+                        string unicodeDecoded = Encoding.Unicode.GetString(hexBytes).TrimEnd('\0');
+                        if (!string.IsNullOrEmpty(unicodeDecoded) && unicodeDecoded.Length > 0)
+                        {
+                            // Nettoyer les caractères de contrôle
+                            unicodeDecoded = new string(unicodeDecoded.Where(c => !char.IsControl(c) || c == '\r' || c == '\n').ToArray());
+                            if (unicodeDecoded.Length > 0 && (unicodeDecoded.Contains("http://") || unicodeDecoded.Contains("https://") || unicodeDecoded.Contains("www.") || unicodeDecoded.Contains(".com") || unicodeDecoded.Contains(".net")))
+                            {
+                                LogMessage($"URL décodée depuis hex (Unicode): {unicodeDecoded}");
+                                return unicodeDecoded;
+                            }
+                        }
+                        
+                        // Essayer ASCII
+                        string asciiDecoded = Encoding.ASCII.GetString(hexBytes).TrimEnd('\0');
+                        if (!string.IsNullOrEmpty(asciiDecoded) && asciiDecoded.Length > 0 && asciiDecoded != unicodeDecoded)
+                        {
+                            asciiDecoded = new string(asciiDecoded.Where(c => !char.IsControl(c) || c == '\r' || c == '\n').ToArray());
+                            if (asciiDecoded.Length > 0 && (asciiDecoded.Contains("http://") || asciiDecoded.Contains("https://") || asciiDecoded.Contains("www.") || asciiDecoded.Contains(".com")))
+                            {
+                                LogMessage($"URL décodée depuis hex (ASCII): {asciiDecoded}");
+                                return asciiDecoded;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMessage($"Erreur décodage hex: {ex.Message}");
+                    }
+                }
+                
+                // Décodage URL standard
                 string decoded = encodedUrl;
                 
                 // Remplacement des caractères encodés courants
@@ -1090,15 +1386,24 @@ namespace DaryPWD
                 decoded = decoded.Replace("%2D", "-");
                 decoded = decoded.Replace("%5F", "_");
                 
-                // Si ça ressemble encore à une URL encodée, essayer de décoder manuellement
-                if (decoded.Contains("%"))
+                // Décodage URL complet si possible
+                try
                 {
-                    // Décodage manuel des caractères encodés restants
-                    // On garde le décodage de base ci-dessus
+                    decoded = Uri.UnescapeDataString(decoded);
+                }
+                catch { }
+                
+                // Si ça ressemble à une URL valide, la retourner
+                if (decoded.Contains("http://") || decoded.Contains("https://") || decoded.Contains("www.") || decoded.Contains(".com") || decoded.Contains(".net") || decoded.Contains(".org"))
+                {
+                    LogMessage($"URL décodée (standard): {decoded}");
+                return decoded;
                 }
                 
-                LogMessage($"URL décodée: {encodedUrl} -> {decoded}");
-                return decoded;
+                // Si ça ne ressemble toujours pas à une URL, essayer de chercher dans les données décryptées
+                // Pour l'instant, retourner la valeur originale
+                LogMessage($"URL non décodée, utilisation originale: {encodedUrl}");
+                return encodedUrl;
             }
             catch (Exception ex)
             {
