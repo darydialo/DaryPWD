@@ -263,13 +263,33 @@ namespace DaryPWD
                         if (passwordEntries.Count == 0)
                         {
                             statusLabel.Text = "Aucun mot de passe trouvé";
+                            
+                            // Détecter la version de Windows pour un message plus spécifique
+                            string osVersion = Environment.OSVersion.ToString();
+                            string message = "Aucun mot de passe n'a été trouvé.\n\n";
+                            
+                            if (osVersion.Contains("6.1")) // Windows 7
+                            {
+                                message += "Pour Windows 7, vérifiez que:\n" +
+                                          "- Internet Explorer a été utilisé pour visiter des sites web\n" +
+                                          "- Les mots de passe ont été enregistrés via AutoComplete d'IE\n" +
+                                          "- L'application est exécutée avec les droits administrateur\n" +
+                                          "- Les mots de passe sont stockés dans le registre Windows\n" +
+                                          "- Internet Explorer n'est pas en mode protégé\n\n" +
+                                          "Note: Les mots de passe doivent être sauvegardés manuellement\n" +
+                                          "dans Internet Explorer (Outils > Options Internet > Contenu > AutoComplete)";
+                            }
+                            else
+                            {
+                                message += "Vérifiez que:\n" +
+                                          "- Internet Explorer ou Microsoft Edge a été utilisé pour enregistrer des mots de passe\n" +
+                                          "- L'application est exécutée avec les droits appropriés\n" +
+                                          "- Les mots de passe sont stockés dans le Credential Manager Windows\n" +
+                                          "- Des sites web ont été consultés et les mots de passe sauvegardés";
+                            }
+                            
                             MessageBox.Show(
-                                "Aucun mot de passe n'a été trouvé.\n\n" +
-                                "Vérifiez que:\n" +
-                                "- Internet Explorer ou Microsoft Edge a été utilisé pour enregistrer des mots de passe\n" +
-                                "- L'application est exécutée avec les droits appropriés\n" +
-                                "- Les mots de passe sont stockés dans le Credential Manager Windows\n" +
-                                "- Des sites web ont été consultés et les mots de passe sauvegardés",
+                                message,
                                 "Information",
                                 MessageBoxButtons.OK,
                                 MessageBoxIcon.Information);
@@ -285,13 +305,33 @@ namespace DaryPWD
                     if (passwordEntries.Count == 0)
                     {
                         statusLabel.Text = "Aucun mot de passe trouvé";
+                        
+                        // Détecter la version de Windows pour un message plus spécifique
+                        string osVersion = Environment.OSVersion.ToString();
+                        string message = "Aucun mot de passe n'a été trouvé.\n\n";
+                        
+                        if (osVersion.Contains("6.1")) // Windows 7
+                        {
+                            message += "Pour Windows 7, vérifiez que:\n" +
+                                      "- Internet Explorer a été utilisé pour visiter des sites web\n" +
+                                      "- Les mots de passe ont été enregistrés via AutoComplete d'IE\n" +
+                                      "- L'application est exécutée avec les droits administrateur\n" +
+                                      "- Les mots de passe sont stockés dans le registre Windows\n" +
+                                      "- Internet Explorer n'est pas en mode protégé\n\n" +
+                                      "Note: Les mots de passe doivent être sauvegardés manuellement\n" +
+                                      "dans Internet Explorer (Outils > Options Internet > Contenu > AutoComplete)";
+                        }
+                        else
+                        {
+                            message += "Vérifiez que:\n" +
+                                      "- Internet Explorer ou Microsoft Edge a été utilisé pour enregistrer des mots de passe\n" +
+                                      "- L'application est exécutée avec les droits appropriés\n" +
+                                      "- Les mots de passe sont stockés dans le Credential Manager Windows\n" +
+                                      "- Des sites web ont été consultés et les mots de passe sauvegardés";
+                        }
+                        
                         MessageBox.Show(
-                            "Aucun mot de passe n'a été trouvé.\n\n" +
-                            "Vérifiez que:\n" +
-                            "- Internet Explorer ou Microsoft Edge a été utilisé pour enregistrer des mots de passe\n" +
-                            "- L'application est exécutée avec les droits appropriés\n" +
-                            "- Les mots de passe sont stockés dans le Credential Manager Windows\n" +
-                            "- Des sites web ont été consultés et les mots de passe sauvegardés",
+                            message,
                             "Information",
                             MessageBoxButtons.OK,
                             MessageBoxIcon.Information);

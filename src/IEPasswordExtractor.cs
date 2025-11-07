@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security;
 using Microsoft.Win32;
@@ -293,13 +294,18 @@ namespace DaryPWD
                                     lowerTarget.StartsWith("edge://") ||
                                     lowerTarget.StartsWith("ftp://") ||
                                     lowerTarget.Contains("internet") ||
+                                    lowerTarget.Contains("ie:") ||
                                     lowerTarget.Contains("://") ||
                                     lowerTarget.Contains("www.") ||
+                                    lowerTarget.Contains(".com") ||
+                                    lowerTarget.Contains(".net") ||
+                                    lowerTarget.Contains(".org") ||
                                     lowerTarget.Contains("login") ||
                                     lowerTarget.Contains("signin") ||
                                     lowerTarget.Contains("auth") ||
                                     lowerTarget.Contains("microsoft.com") ||
-                                    lowerTarget.Contains("edge"));
+                                    lowerTarget.Contains("edge") ||
+                                    lowerTarget.Contains("target"));
 
                                 // Détecter le type de mot de passe
                                 string passwordType = "Password-Protected Site";
@@ -389,17 +395,34 @@ namespace DaryPWD
                 LogMessage("Début ExtractFromRegistry");
                 
                 // Chemin principal du registre pour les mots de passe AutoComplete d'Internet Explorer
-                string mainIEPath = @"Software\Microsoft\Internet Explorer\IntelliForms\Storage2";
+                // Windows 7 utilise Storage2, mais peut aussi utiliser Storage1
+                string[] ieStoragePaths = new string[]
+                {
+                    @"Software\Microsoft\Internet Explorer\IntelliForms\Storage2",
+                    @"Software\Microsoft\Internet Explorer\IntelliForms\Storage1",
+                    @"Software\Microsoft\Internet Explorer\IntelliForms\SPW"
+                };
                 
-                LogMessage($"Extraction depuis le chemin principal IE: {mainIEPath}");
-                ExtractIEDataFromRegistry(Registry.CurrentUser, entries);
+                // Essayer chaque chemin de stockage IE
+                foreach (string iePath in ieStoragePaths)
+                {
+                    try
+                    {
+                        LogMessage($"Extraction depuis le chemin IE: {iePath}");
+                        ExtractIEDataFromRegistryPath(Registry.CurrentUser, iePath, entries);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMessage($"Erreur chemin IE {iePath}: {ex.Message}");
+                    }
+                }
                 
-                // Essayer aussi d'autres chemins possibles
+                // Essayer aussi d'autres chemins possibles pour Windows 7
                 string[] additionalPaths = new string[]
                 {
-                    @"Software\Microsoft\Internet Explorer\IntelliForms\Storage1",
-                    @"Software\Microsoft\Internet Explorer\IntelliForms\Storage2",
-                    @"Software\Microsoft\Windows\CurrentVersion\Internet Settings\5.0\Cache\Cookies"
+                    @"Software\Microsoft\Internet Explorer\Main",
+                    @"Software\Microsoft\Windows\CurrentVersion\Internet Settings\5.0\Cache\Cookies",
+                    @"Software\Microsoft\Windows\CurrentVersion\Internet Settings\ZoneMap"
                 };
 
                 foreach (string path in additionalPaths)
@@ -413,6 +436,16 @@ namespace DaryPWD
                     {
                         LogMessage($"Erreur chemin registre {path}: {ex.Message}");
                     }
+                }
+                
+                // Méthode alternative pour Windows 7 : chercher dans toutes les sous-clés d'IntelliForms
+                try
+                {
+                    ExtractFromIntelliFormsAllSubKeys(entries);
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"Erreur extraction IntelliForms complète: {ex.Message}");
                 }
                 
                 LogMessage($"Fin ExtractFromRegistry: {entries.Count} entrées totales");
@@ -470,11 +503,10 @@ namespace DaryPWD
             }
         }
 
-        private static void ExtractIEDataFromRegistry(RegistryKey rootKey, List<PasswordEntry> entries)
+        private static void ExtractIEDataFromRegistryPath(RegistryKey rootKey, string iePath, List<PasswordEntry> entries)
         {
             try
             {
-                string iePath = @"Software\Microsoft\Internet Explorer\IntelliForms\Storage2";
                 LogMessage($"Extraction IE depuis: {iePath}");
                 
                 using (RegistryKey key = rootKey.OpenSubKey(iePath))
@@ -509,12 +541,18 @@ namespace DaryPWD
                                                     byte[] data = value as byte[];
                                                     if (data != null && data.Length > 0)
                                                     {
-                                                        LogMessage($"Décryptage des données pour {valueName}...");
+                                                        LogMessage($"Décryptage des données pour {valueName} (taille: {data.Length} bytes)...");
                                                         string decrypted = DecryptDPAPI(data);
                                                         if (!string.IsNullOrEmpty(decrypted))
                                                         {
-                                                            LogMessage($"Données décryptées avec succès, parsing...");
+                                                            LogMessage($"Données décryptées avec succès (taille: {decrypted.Length} caractères), parsing...");
                                                             ParseIEFormData(url, decrypted, entries);
+                                                        }
+                                                        else
+                                                        {
+                                                            LogMessage($"Échec du décryptage pour {valueName}");
+                                                            // Essayer une méthode alternative de parsing pour Windows 7
+                                                            TryAlternativeIEParsing(url, data, entries);
                                                         }
                                                     }
                                                 }
@@ -541,8 +579,77 @@ namespace DaryPWD
             }
             catch (Exception ex)
             {
-                LogMessage($"ERREUR ExtractIEDataFromRegistry: {ex.Message}");
+                LogMessage($"ERREUR ExtractIEDataFromRegistryPath {iePath}: {ex.Message}");
                 LogMessage($"Stack Trace: {ex.StackTrace}");
+            }
+        }
+
+        private static void ExtractFromIntelliFormsAllSubKeys(List<PasswordEntry> entries)
+        {
+            try
+            {
+                LogMessage("Début extraction complète IntelliForms");
+                string basePath = @"Software\Microsoft\Internet Explorer\IntelliForms";
+                
+                using (RegistryKey intelliFormsKey = Registry.CurrentUser.OpenSubKey(basePath))
+                {
+                    if (intelliFormsKey != null)
+                    {
+                        LogMessage($"Clé IntelliForms trouvée, recherche de toutes les sous-clés...");
+                        string[] subKeys = intelliFormsKey.GetSubKeyNames();
+                        LogMessage($"Nombre de sous-clés IntelliForms: {subKeys.Length}");
+                        
+                        foreach (string subKeyName in subKeys)
+                        {
+                            try
+                            {
+                                string fullPath = basePath + "\\" + subKeyName;
+                                LogMessage($"Traitement sous-clé IntelliForms: {subKeyName}");
+                                ExtractIEDataFromRegistryPath(Registry.CurrentUser, fullPath, entries);
+                            }
+                            catch (Exception ex)
+                            {
+                                LogMessage($"Erreur sous-clé IntelliForms {subKeyName}: {ex.Message}");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        LogMessage($"Clé IntelliForms non trouvée: {basePath}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"ERREUR ExtractFromIntelliFormsAllSubKeys: {ex.Message}");
+            }
+        }
+
+        private static void TryAlternativeIEParsing(string url, byte[] data, List<PasswordEntry> entries)
+        {
+            try
+            {
+                LogMessage($"Tentative de parsing alternatif pour {url}");
+                
+                // Essayer de décoder directement en Unicode
+                string unicodeString = Encoding.Unicode.GetString(data).TrimEnd('\0');
+                if (!string.IsNullOrEmpty(unicodeString))
+                {
+                    LogMessage($"Données Unicode trouvées, parsing...");
+                    ParseIEFormData(url, unicodeString, entries);
+                }
+                
+                // Essayer aussi en ASCII
+                string asciiString = Encoding.ASCII.GetString(data).TrimEnd('\0');
+                if (!string.IsNullOrEmpty(asciiString) && asciiString != unicodeString)
+                {
+                    LogMessage($"Données ASCII trouvées, parsing...");
+                    ParseIEFormData(url, asciiString, entries);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Erreur parsing alternatif pour {url}: {ex.Message}");
             }
         }
 
@@ -639,15 +746,40 @@ namespace DaryPWD
                 if (string.IsNullOrEmpty(data))
                     return;
 
-                LogMessage($"Parsing des données IE pour URL: {url}");
+                LogMessage($"Parsing des données IE pour URL: {url} (taille: {data.Length} caractères)");
                 
                 // Format typique d'IE: les données sont séparées par des caractères null
                 string[] parts = data.Split(new char[] { '\0' }, StringSplitOptions.RemoveEmptyEntries);
                 
                 LogMessage($"Nombre de parties après split: {parts.Length}");
                 
+                // Si pas de séparateurs null, essayer d'autres méthodes
+                if (parts.Length == 0 || (parts.Length == 1 && parts[0].Length == data.Length))
+                {
+                    // Essayer de parser avec d'autres séparateurs (Windows 7 peut utiliser différents formats)
+                    parts = data.Split(new char[] { '\r', '\n', '\t', (char)0x01, (char)0x02 }, StringSplitOptions.RemoveEmptyEntries);
+                    LogMessage($"Nombre de parties après split alternatif: {parts.Length}");
+                }
+                
                 if (parts.Length == 0)
+                {
+                    // Dernière tentative : traiter toute la chaîne comme un seul mot de passe
+                    string singlePassword = data.Trim();
+                    singlePassword = CleanPassword(singlePassword);
+                    if (!string.IsNullOrEmpty(singlePassword) && IsValidPassword(singlePassword))
+                    {
+                        entries.Add(new PasswordEntry
+                        {
+                            EntryName = url,
+                            Type = "Internet Explorer",
+                            StoredIn = "Registry (AutoComplete)",
+                            UserName = "",
+                            Password = singlePassword
+                        });
+                        LogMessage($"✓ Entrée ajoutée (password unique) pour {url}");
+                    }
                     return;
+                }
 
                 string username = "";
                 string password = "";
@@ -659,19 +791,37 @@ namespace DaryPWD
                     if (string.IsNullOrEmpty(part))
                         continue;
 
-                    LogMessage($"Partie {i}: {part.Substring(0, Math.Min(20, part.Length))}...");
+                    // Filtrer les parties qui semblent être des métadonnées ou du binaire
+                    if (part.Length > 200) // Trop long pour être un username/password normal
+                        continue;
+                    
+                    // Vérifier si c'est principalement du texte imprimable
+                    int printableChars = 0;
+                    foreach (char c in part)
+                    {
+                        if (char.IsLetterOrDigit(c) || char.IsPunctuation(c) || char.IsSymbol(c) || c == ' ')
+                            printableChars++;
+                    }
+                    if (printableChars < part.Length * 0.7) // Moins de 70% de caractères imprimables
+                        continue;
 
-                    // Essayer d'identifier le username (souvent le premier champ non vide)
+                    LogMessage($"Partie {i}: {part.Substring(0, Math.Min(30, part.Length))}...");
+
+                    // Essayer d'identifier le username (souvent le premier champ non vide qui ressemble à un email/login)
                     if (string.IsNullOrEmpty(username))
                     {
-                        username = part;
-                        LogMessage($"Username identifié: {username}");
+                        // Vérifier si ça ressemble à un username (contient des lettres/chiffres)
+                        if (part.Length > 0 && part.Length <= 100)
+                        {
+                            username = part;
+                            LogMessage($"Username identifié: {username}");
+                        }
                     }
                     // Le password est généralement le deuxième champ significatif
                     else if (string.IsNullOrEmpty(password))
                     {
                         password = part;
-                        LogMessage($"Password identifié");
+                        LogMessage($"Password identifié (longueur: {password.Length})");
                         break; // On a trouvé username et password
                     }
                 }
@@ -682,6 +832,21 @@ namespace DaryPWD
                     password = parts[0];
                     LogMessage($"Password unique identifié");
                 }
+                
+                // Si on a plusieurs parties mais pas de password identifié, essayer la dernière partie
+                if (parts.Length > 1 && string.IsNullOrEmpty(password))
+                {
+                    for (int i = parts.Length - 1; i >= 0; i--)
+                    {
+                        string part = parts[i].Trim();
+                        if (!string.IsNullOrEmpty(part) && part.Length > 0 && part.Length <= 200)
+                        {
+                            password = part;
+                            LogMessage($"Password identifié depuis la dernière partie valide");
+                            break;
+                        }
+                    }
+                }
 
                 // Nettoyer le mot de passe avant de l'ajouter
                 password = CleanPassword(password);
@@ -689,19 +854,28 @@ namespace DaryPWD
                 // Ajouter seulement si on a au moins un password valide
                 if (!string.IsNullOrEmpty(password) && IsValidPassword(password))
                 {
-                    entries.Add(new PasswordEntry
+                    // Vérifier si cette entrée existe déjà (éviter les doublons)
+                    bool exists = entries.Any(e => e.EntryName == url && e.UserName == username && e.Password == password);
+                    if (!exists)
                     {
-                        EntryName = url,
-                        Type = "AutoComplete",
-                        StoredIn = "Registry",
-                        UserName = username,
-                        Password = password
-                    });
-                    LogMessage($"✓ Entrée ajoutée pour {url}: User={username}, Password={new string('*', password.Length)}");
+                        entries.Add(new PasswordEntry
+                        {
+                            EntryName = url,
+                            Type = "Internet Explorer",
+                            StoredIn = "Registry (AutoComplete)",
+                            UserName = username,
+                            Password = password
+                        });
+                        LogMessage($"✓ Entrée ajoutée pour {url}: User={username}, Password={new string('*', Math.Min(password.Length, 20))}");
+                    }
+                    else
+                    {
+                        LogMessage($"Entrée déjà présente pour {url}, ignorée");
+                    }
                 }
                 else
                 {
-                    LogMessage($"Aucun password valide trouvé pour {url}");
+                    LogMessage($"Aucun password valide trouvé pour {url} (password vide ou invalide)");
                 }
             }
             catch (Exception ex)
